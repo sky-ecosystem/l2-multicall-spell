@@ -80,7 +80,7 @@ contract L2MulticallSpellTest is Test {
     uint160 constant ARB_ALIAS_OFFSET = uint160(0x1111000000000000000000000000000000001111);
     uint32  constant MIN_GAS_LIMIT    = 1_000_000;
 
-    // LayerZero: Avalanche is the EVM chain currently bridged, behind a non-timelocked relay
+    // LayerZero: Avalanche, behind a non-timelocked relay until its planned migration
     uint32  constant ETH_EID           = 30101;
     uint32  constant AVAX_EID          = 30106;
     address constant AVAX_L2_GOV_RELAY = 0xe928885BCe799Ed933651715608155F01abA23cA; // not resolvable from mainnet
