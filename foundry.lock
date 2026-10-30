@@ -4,5 +4,23 @@
       "name": "v1.17.0",
       "rev": "f3dae6e6ee381f25eb6a246f7da9b85c91a68219"
     }
+  },
+  "lib/lz-governance-relay": {
+    "branch": {
+      "name": "relay-timelock",
+      "rev": "5f37cfd278f13c0f3a3ae23ee20a3f42e721de9f"
+    }
+  },
+  "lib/lz-init-lib": {
+    "branch": {
+      "name": "dev",
+      "rev": "d8f36de89a30ff6d3556922a75d3069cb94740a8"
+    }
+  },
+  "lib/xchain-helpers": {
+    "branch": {
+      "name": "master",
+      "rev": "39d9542173db80143b5135181962f8780fa466f2"
+    }
   }
 }

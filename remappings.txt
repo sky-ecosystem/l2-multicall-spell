@@ -1,0 +1,2 @@
+lz-init-lib/=lib/lz-init-lib/deploy/
+lz-governance-relay/=lib/lz-governance-relay/

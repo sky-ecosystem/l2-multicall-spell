@@ -16,16 +16,9 @@
 
 pragma solidity ^0.8.24;
 
-/**
- * @title  L2MulticallSpell
- * @notice A generic, reusable L2 spell. Deployed once per L2 and delegatecalled by the
- *         L2GovernanceRelay, so every target sees the relay (its ward/admin) as the caller.
- *         The L1 spell encodes the full list of calls, in order, and relays it in one message.
- * @dev    Calling this contract directly (not via delegatecall) is harmless: it holds no
- *         permissions anywhere, and must never be granted any.
- *         Out of scope by design: calls that send ETH, delegatecalls, and logic that depends on
- *         return values or on-chain checks between calls. Those still need a bespoke L2 spell.
- */
+/// @notice Generic L2 spell executing a batch of calls on a remote chain. Deployed once per L2,
+///         delegatecalled by L2GovernanceRelay, so each call is made with the relay as `msg.sender`.
+/// @dev    `execute` is permissionless, so the spell must never be granted any permission.
 contract L2MulticallSpell {
 
     struct Call {
@@ -33,16 +26,9 @@ contract L2MulticallSpell {
         bytes   data;
     }
 
-    /**
-     * @notice Executes `calls` in order. Reverts, undoing all of them, if any call reverts.
-     * @dev    Reverts if executed after `deadline`, so a message that failed or was delayed, and
-     *         may no longer be desirable, cannot be replayed indefinitely.
-     *         Targets without code are rejected, since a call to them would silently succeed
-     *         (e.g. a wrong address for the current chain).
-     * @param  calls    Calls to execute, in order.
-     * @param  deadline Latest destination chain timestamp (inclusive) at which the spell can be
-     *                  executed.
-     */
+    /// @notice Executes `calls` in order, reverting if any of them reverts.
+    /// @dev    Reverts after `deadline`, so a failed or delayed message cannot be executed indefinitely.
+    ///         Reverts on a target without code, as a call to it would silently succeed.
     function execute(Call[] calldata calls, uint256 deadline) external {
         require(block.timestamp <= deadline, "L2MulticallSpell/deadline-expired");
 
