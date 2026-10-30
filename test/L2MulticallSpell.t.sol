@@ -47,9 +47,10 @@ interface L2MessengerLike {
 
 contract TargetMock {
     error CustomError(uint256 value);
+    event Push(uint256 value);
 
     mapping(address => uint256) public wards;
-    uint256[] public log;
+    uint256[]                   public log;
 
     constructor(address ward) { wards[ward] = 1; }
 
@@ -58,7 +59,7 @@ contract TargetMock {
         _;
     }
 
-    function push(uint256 value) external auth { log.push(value); }
+    function push(uint256 value) external auth { log.push(value); emit Push(value); }
     function failWithReason()    external view auth { revert("TargetMock/failed"); }
     function failWithCustom()    external view auth { revert CustomError(42); }
     function logLength()         external view returns (uint256) { return log.length; }
@@ -135,19 +136,21 @@ contract L2MulticallSpellTest is Test {
         calls[1] = L2MulticallSpell.Call(address(targetB), abi.encodeCall(TargetMock.push, (2)));
         calls[2] = L2MulticallSpell.Call(address(targetA), abi.encodeCall(TargetMock.push, (3)));
 
-        _execute(calls, block.timestamp);
+        // expected events must be emitted in this order, each by its target
+        vm.expectEmit(address(targetA));
+        emit TargetMock.Push(1);
+        vm.expectEmit(address(targetB));
+        emit TargetMock.Push(2);
+        vm.expectEmit(address(targetA));
+        emit TargetMock.Push(3);
 
-        assertEq(targetA.logLength(), 2);
-        assertEq(targetA.log(0), 1);
-        assertEq(targetA.log(1), 3);
-        assertEq(targetB.logLength(), 1);
-        assertEq(targetB.log(0), 2);
+        _executeViaRelay(calls, block.timestamp);
     }
 
     function test_executesAtDeadline() public {
-        _execute(_pushCalls(targetA), block.timestamp);
+        _executeViaRelay(_buildPushCalls(targetA), block.timestamp);
 
-        assertEq(targetA.logLength(), 2);
+        _assertPushed(targetA);
     }
 
     // ==================================
@@ -155,12 +158,12 @@ contract L2MulticallSpellTest is Test {
     // ==================================
 
     function test_revertsAfterDeadline() public {
-        L2MulticallSpell.Call[] memory calls = _pushCalls(targetA);
+        L2MulticallSpell.Call[] memory calls = _buildPushCalls(targetA);
         uint256 deadline = block.timestamp;
 
         vm.warp(deadline + 1);
         vm.expectRevert("L2MulticallSpell/deadline-expired");
-        _execute(calls, deadline);
+        _executeViaRelay(calls, deadline);
     }
 
     function test_revertsOnTargetWithoutCode() public {
@@ -168,7 +171,7 @@ contract L2MulticallSpellTest is Test {
         calls[0] = L2MulticallSpell.Call(makeAddr("noCode"), abi.encodeCall(TargetMock.push, (1)));
 
         vm.expectRevert("L2MulticallSpell/target-without-code");
-        _execute(calls, block.timestamp);
+        _executeViaRelay(calls, block.timestamp);
     }
 
     /// @dev An entry left unset in a fixed-size array has a zero target.
@@ -177,7 +180,7 @@ contract L2MulticallSpellTest is Test {
         calls[0] = L2MulticallSpell.Call(address(targetA), abi.encodeCall(TargetMock.push, (1)));
 
         vm.expectRevert("L2MulticallSpell/target-without-code");
-        _execute(calls, block.timestamp);
+        _executeViaRelay(calls, block.timestamp);
     }
 
     function test_bubblesRevertReason() public {
@@ -185,7 +188,7 @@ contract L2MulticallSpellTest is Test {
         calls[0] = L2MulticallSpell.Call(address(targetA), abi.encodeCall(TargetMock.failWithReason, ()));
 
         vm.expectRevert("TargetMock/failed");
-        _execute(calls, block.timestamp);
+        _executeViaRelay(calls, block.timestamp);
     }
 
     function test_bubblesCustomError() public {
@@ -193,7 +196,7 @@ contract L2MulticallSpellTest is Test {
         calls[0] = L2MulticallSpell.Call(address(targetA), abi.encodeCall(TargetMock.failWithCustom, ()));
 
         vm.expectRevert(abi.encodeWithSelector(TargetMock.CustomError.selector, 42));
-        _execute(calls, block.timestamp);
+        _executeViaRelay(calls, block.timestamp);
     }
 
     /// @dev A call to a function the target does not have reverts without data.
@@ -202,7 +205,7 @@ contract L2MulticallSpellTest is Test {
         calls[0] = L2MulticallSpell.Call(address(targetA), abi.encodeWithSignature("doesNotExist()"));
 
         vm.expectRevert("L2MulticallSpell/call-failed");
-        _execute(calls, block.timestamp);
+        _executeViaRelay(calls, block.timestamp);
     }
 
     function test_revertsWhenLaterCallFails() public {
@@ -211,13 +214,13 @@ contract L2MulticallSpellTest is Test {
         calls[1] = L2MulticallSpell.Call(address(targetB), abi.encodeCall(TargetMock.failWithReason, ()));
 
         vm.expectRevert("TargetMock/failed");
-        _execute(calls, block.timestamp);
+        _executeViaRelay(calls, block.timestamp);
     }
 
     /// @dev Called directly rather than delegatecalled by the relay, the spell is the caller.
     function test_directCallHasNoPower() public {
         vm.expectRevert("TargetMock/not-authorized");
-        spell.execute(_pushCalls(targetA), block.timestamp);
+        spell.execute(_buildPushCalls(targetA), block.timestamp);
     }
 
     // ==================================
@@ -239,7 +242,9 @@ contract L2MulticallSpellTest is Test {
         bridge.destination.selectFork();
         L2MulticallSpell l2Spell = new L2MulticallSpell();
         TargetMock target = new TargetMock(l2GovRelay);
-        bytes memory data = abi.encodeCall(L2MulticallSpell.execute, (_pushCalls(target), block.timestamp + 1 days));
+        bytes memory data = abi.encodeCall(
+            L2MulticallSpell.execute, (_buildPushCalls(target), block.timestamp + 1 days)
+        );
 
         _relayArbitrum(l1GovRelay, address(l2Spell), data);
 
@@ -252,7 +257,9 @@ contract L2MulticallSpellTest is Test {
         bridge.destination.selectFork();
         L2MulticallSpell l2Spell = new L2MulticallSpell();
         TargetMock target = new TargetMock(AVAX_L2_GOV_RELAY);
-        bytes memory data = abi.encodeCall(L2MulticallSpell.execute, (_pushCalls(target), block.timestamp + 1 days));
+        bytes memory data = abi.encodeCall(
+            L2MulticallSpell.execute, (_buildPushCalls(target), block.timestamp + 1 days)
+        );
 
         _relayLZ(AVAX_L2_GOV_RELAY, address(l2Spell), data);
 
@@ -275,7 +282,7 @@ contract L2MulticallSpellTest is Test {
         TargetMock target = new TargetMock(address(l2GovRelay));
         // The deadline is checked on execution, so it has to cover the relay's delay
         uint256 deadline = block.timestamp + LZ_TIMELOCK_DELAY + 1 days;
-        bytes memory data = abi.encodeCall(L2MulticallSpell.execute, (_pushCalls(target), deadline));
+        bytes memory data = abi.encodeCall(L2MulticallSpell.execute, (_buildPushCalls(target), deadline));
 
         bridge.source.selectFork();
         vm.prank(PAUSE_PROXY);
@@ -300,7 +307,7 @@ contract L2MulticallSpellTest is Test {
         (address l1GovRelay, address l2GovRelay) = _govRelays("OPTIMISM_GOV_RELAY");
         getChain("optimism").createSelectFork();
         L2MulticallSpell l2Spell = new L2MulticallSpell();
-        L2MulticallSpell.Call[] memory calls = _pushCalls(new TargetMock(l2GovRelay));
+        L2MulticallSpell.Call[] memory calls = _buildPushCalls(new TargetMock(l2GovRelay));
         uint256 deadline = block.timestamp;
 
         vm.warp(deadline + 1);
@@ -312,7 +319,7 @@ contract L2MulticallSpellTest is Test {
         (address l1GovRelay, address l2GovRelay) = _govRelays("ARBITRUM_GOV_RELAY");
         getChain("arbitrum_one").createSelectFork();
         L2MulticallSpell l2Spell = new L2MulticallSpell();
-        L2MulticallSpell.Call[] memory calls = _pushCalls(new TargetMock(l2GovRelay));
+        L2MulticallSpell.Call[] memory calls = _buildPushCalls(new TargetMock(l2GovRelay));
         bytes memory data = abi.encodeCall(L2MulticallSpell.execute, (calls, block.timestamp));
 
         vm.warp(block.timestamp + 1);
@@ -331,7 +338,7 @@ contract L2MulticallSpellTest is Test {
         l2GovRelay = L1GovernanceRelayLike(l1GovRelay).l2GovernanceRelay();
     }
 
-    function _pushCalls(TargetMock target) internal pure returns (L2MulticallSpell.Call[] memory calls) {
+    function _buildPushCalls(TargetMock target) internal pure returns (L2MulticallSpell.Call[] memory calls) {
         calls = new L2MulticallSpell.Call[](2);
         calls[0] = L2MulticallSpell.Call(address(target), abi.encodeCall(TargetMock.push, (1)));
         calls[1] = L2MulticallSpell.Call(address(target), abi.encodeCall(TargetMock.push, (2)));
@@ -343,7 +350,7 @@ contract L2MulticallSpellTest is Test {
         assertEq(target.log(1), 2);
     }
 
-    function _execute(L2MulticallSpell.Call[] memory calls, uint256 deadline) internal {
+    function _executeViaRelay(L2MulticallSpell.Call[] memory calls, uint256 deadline) internal {
         _relayFromL2Messenger(BASE_L1_GOV_RELAY, BASE_L2_GOV_RELAY, address(spell), calls, deadline);
     }
 
@@ -369,7 +376,9 @@ contract L2MulticallSpellTest is Test {
         bridge.destination.selectFork();
         L2MulticallSpell l2Spell = new L2MulticallSpell();
         TargetMock target = new TargetMock(l2GovRelay);
-        bytes memory data = abi.encodeCall(L2MulticallSpell.execute, (_pushCalls(target), block.timestamp + 1 days));
+        bytes memory data = abi.encodeCall(
+            L2MulticallSpell.execute, (_buildPushCalls(target), block.timestamp + 1 days)
+        );
 
         bridge.source.selectFork();
         vm.prank(PAUSE_PROXY);
