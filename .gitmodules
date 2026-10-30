@@ -1,3 +1,13 @@
 [submodule "lib/forge-std"]
 	path = lib/forge-std
 	url = https://github.com/foundry-rs/forge-std
+[submodule "lib/xchain-helpers"]
+	path = lib/xchain-helpers
+	url = https://github.com/sky-ecosystem/xchain-helpers
+[submodule "lib/lz-governance-relay"]
+	path = lib/lz-governance-relay
+	url = https://github.com/sky-ecosystem/lz-governance-relay
+	branch = relay-timelock
+[submodule "lib/lz-init-lib"]
+	path = lib/lz-init-lib
+	url = https://github.com/sky-ecosystem/lz-init-lib

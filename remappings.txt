@@ -1,0 +1,6 @@
+lz-init-lib/=lib/lz-init-lib/deploy/
+lz-governance-relay/=lib/lz-governance-relay/
+@openzeppelin/contracts/=lib/xchain-helpers/lib/openzeppelin-contracts/contracts/
+@layerzerolabs/lz-evm-protocol-v2/=lib/xchain-helpers/lib/LayerZero-v2/packages/layerzero-v2/evm/protocol/
+@layerzerolabs/lz-evm-messagelib-v2/=lib/xchain-helpers/lib/LayerZero-v2/packages/layerzero-v2/evm/messagelib/
+@layerzerolabs/oapp-evm/=lib/xchain-helpers/lib/devtools/packages/oapp-evm/
